@@ -1,3 +1,7 @@
+#禁止倒卖
+#禁止倒卖
+#禁止倒卖
+#重要的事情说三遍！
 import subprocess
 import sys
 import re
@@ -6,7 +10,7 @@ import requests
 from socket import gethostbyname, gaierror
 
 print("作者: ikdxhz")
-print("程序版本: 1.7")
+print("程序版本: 1.8")
 
 pip_source = []
 
