@@ -9,6 +9,9 @@ import os
 
 print("作者: ikdxhz")
 print("程序版本: 1.87.2")
+print("当获取公告不可用时，请访问存储库：https://github.com/ikdxhz/python-")
+print("当获取公告不可用时，请访问存储库：https://github.com/ikdxhz/python-")
+print("当获取公告不可用时，请访问存储库：https://github.com/ikdxhz/python-")
 
 pip_source = []
 
