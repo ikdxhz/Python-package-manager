@@ -86,23 +86,107 @@ def get_pip_command():
     print("curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && python get-pip.py")
     sys.exit(1)
 
-def run_pip_command(pip_command, command, args=[], include_source=True):
+def run_pip_command(pip_command, command, args=[], include_source=True, current_package=None):
     full_command = pip_command + command + args
     if include_source:
         full_command += pip_source
+    
+    # 新增实时输出处理
     try:
-        result = subprocess.run(full_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        process = subprocess.Popen(
+            full_command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        )
+
+        # 实时输出缓冲区
+        output_buffer = []
+        progress_bar_active = False
+
+        while True:
+            line = process.stdout.readline()
+            if not line:
+                break
+                
+            # 保留原始输出用于错误处理
+            output_buffer.append(line)
+            
+            # 处理进度条显示
+            if "━━━━" in line:
+                # 进度条行处理
+                sys.stdout.write('\r' + line.strip())
+                sys.stdout.flush()
+                progress_bar_active = True
+                continue
+            elif progress_bar_active:
+                # 进度条结束换行
+                print()
+                progress_bar_active = False
+
+            # 原有中文处理逻辑保持不变
+            processed_line = process_pip_output(line.strip())
+            if processed_line:
+                print(processed_line)
+
+        process.wait()
+        
+        # 错误处理部分使用缓冲的完整输出
+        output = ''.join(output_buffer)
+        if process.returncode != 0:
+            handle_pip_errors(full_command, output, current_package)
+            return False
         return True
-    except subprocess.CalledProcessError as e:
-        print(f"\n命令 {' '.join(full_command)} 失败:")
-        print(e.stderr.strip())
-        return False
-    except FileNotFoundError:
-        print(f"\n命令 {' '.join(full_command)} 找不到文件.")
-        return False
+
     except Exception as e:
-        print(f"发生未知错误: {e}")
+        print(f"\n错误: 执行过程中发生未知错误: {e}")
         return False
+
+# 新增辅助函数
+def process_pip_output(line):
+    # 保持原有的中文处理逻辑
+    if "Looking in indexes:" in line:
+        return f"当前使用的索引源: {line.split(': ')[1]}"
+    elif "Requirement already satisfied:" in line:
+        return process_requirement_line(line)
+    # 新增安装过程汉化
+    elif "Installing collected packages:" in line:
+        packages = line.split(":")[1].strip()
+        return f"▰ 正在安装软件包: {packages}"
+    elif "Successfully installed" in line:
+        packages_info = line.replace("Successfully installed", "").strip()
+        # 格式化版本信息
+        formatted = []
+        for pkg in packages_info.split():
+            if '-' in pkg:
+                name, version = pkg.rsplit('-', 1)
+                formatted.append(f"{name} 版本: {version}")
+            else:
+                formatted.append(pkg)
+        return f"✓ 成功安装: {', '.join(formatted)}"
+    # 其他处理逻辑...
+    return line
+
+def process_requirement_line(line):
+    parts = line.split("Requirement already satisfied:")
+    package_info = parts[1].strip()
+    if "from requests" in package_info or "from" in package_info and "(" in package_info:
+        pkg_parts = package_info.split("(from")
+        pkg_name = pkg_parts[0].strip()
+        dependency = pkg_parts[1].strip().rstrip(")")
+        return f"需求已满足: {pkg_name} [作为 {dependency} 的依赖项已安装]"
+    return f"需求已满足: {package_info} [已安装]"
+
+def handle_pip_errors(full_command, output, current_package):
+    print(f"\n命令 {' '.join(full_command)} 失败:")
+    # 使用完整输出进行错误分析
+    if "No matching distribution found" in output:
+        print("错误: 未找到匹配的分发版本")
+    elif "Installing collected packages:" in output:
+        print("安装过程被中断")
+    # 其他错误处理逻辑保持不变...
 
 def install(pip_command, package, version=None):
     if not validate_package_name(package):
@@ -113,6 +197,9 @@ def install(pip_command, package, version=None):
         package_with_version = f"{package}=={version}"
     else:
         package_with_version = package
+    
+    print(f"\n正在准备安装 {package_with_version}...")
+    print("正在下载包信息...")
     
     if run_pip_command(pip_command, ['install'], [package_with_version]):
         print(f"\n{package_with_version} 安装成功.")
@@ -139,6 +226,7 @@ def update_single(pip_command, package):
         
         print(f"\n正在更新 {package}...")
         print(f"当前版本: {current_version}")
+        print(f"正在下载 {package} 的最新版本信息...")
         
         if run_pip_command(pip_command, ['install', '--upgrade'], [package]):
             new_result = subprocess.run(pip_command + ['show', package], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
@@ -193,10 +281,11 @@ def update_all(pip_command):
         
         # 修改为单线程顺序更新
         failed_updates = []
-        for package_name, current_version, latest_version in outdated_packages:
-            print(f"\n正在更新 {package_name}...")
-            print(f"当前版本: {current_version}")
-            print(f"最新版本: {latest_version}")
+        total = len(outdated_packages)
+        for idx, (package_name, current_version, latest_version) in enumerate(outdated_packages, 1):
+            print(f"\n▰ 正在处理更新 ({idx}/{total}): {package_name}")
+            print(f"  当前版本: {current_version} → 最新版本: {latest_version}")
+            print(f"正在下载 {package_name} 的更新...")
             if not run_pip_command(pip_command, ['install', '--upgrade'], [package_name]):
                 print(f"{package_name} 更新失败.")
                 failed_updates.append(package_name)
@@ -216,52 +305,61 @@ def update_all(pip_command):
         print(f"发生未知错误: {e}")
 
 def uninstall(pip_command, package):
-    def check_dependencies(packages, checked=set()):
-        dependencies = set()
-        for pkg in packages:
-            if pkg in checked:
-                continue
-            checked.add(pkg)
-            try:
-                result = subprocess.run(pip_command + ['show', pkg], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-                deps = re.findall(r'Requires:\s*(.*)', result.stdout)
-                if deps:
-                    dep_list = [dep.strip() for dep in deps[0].split(',')]
-                    dependencies.update(dep_list)
-                    additional_deps = check_dependencies(dep_list, checked)
-                    dependencies.update(additional_deps)
-            except subprocess.CalledProcessError:
-                pass
-        return dependencies
+    # 支持批量卸载多个包
+    packages = package.split()
+    success_list = []
+    fail_list = []
 
-    all_packages = []
-    try:
-        result = subprocess.run(pip_command + ['list', '--format=freeze'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-        installed_packages = result.stdout.splitlines()
-        installed_dict = {pkg.split('==')[0]: pkg for pkg in installed_packages}
-        all_packages = list(installed_dict.keys())
-    except subprocess.CalledProcessError as e:
-        print(f"\n列出已安装库失败: {e.stderr.strip()}")
-        return
+    for pkg in packages:
+        print(f"\n▰▰▰ 开始处理 {pkg} 卸载 ▰▰▰")
+        
+        # 检查包是否存在
+        try:
+            subprocess.run(pip_command + ['show', pkg], check=True)
+        except subprocess.CalledProcessError:
+            print(f"✗ 包 {pkg} 未安装或不存在")
+            fail_list.append(pkg)
+            continue
 
-    dependencies = check_dependencies([package])
-    other_packages = [pkg for pkg in all_packages if pkg != package and any(dep in dependencies for dep in check_dependencies([pkg]))]
+        # 新增依赖检查
+        print(f"▰ 正在检查 {pkg} 的依赖关系...")
+        try:
+            dependents = subprocess.check_output(
+                pip_command + ['pipdeptree', '-rp', pkg],
+                stderr=subprocess.STDOUT
+            ).decode()
+            if dependents.strip():
+                print(f"⚠️ 警告: 以下包依赖 {pkg}:")
+                print(dependents)
+                confirm = input("仍要强制卸载？(y/n): ").lower()
+                if confirm != 'y':
+                    print(f"已取消 {pkg} 卸载")
+                    fail_list.append(pkg)
+                    continue
+        except subprocess.CalledProcessError:
+            pass  # 没有依赖项
 
-    if other_packages:
-        print(f"\n警告: {package} 被以下包依赖: {', '.join(other_packages)}")
-        confirm = input("确定要卸载吗? (y/n): ").strip().lower()
-        if confirm != 'y':
-            print("取消卸载.")
-            return
-    
-    if run_pip_command(pip_command, ['uninstall', '-y'], [package], include_source=False):
-        print(f"\n{package} 卸载成功.")
-    else:
-        print(f"\n{package} 卸载失败.")
-        print("请检查以下几点:")
-        print("1. 确保你有足够的权限来卸载该包.")
-        print("2. 检查是否有其他包依赖于该包.")
-        print("3. 尝试手动卸载该包，使用命令: pip uninstall -y {package}")
+        # 执行卸载
+        if run_pip_command(pip_command, ['uninstall', '-y'], [pkg], 
+                          include_source=False, 
+                          current_package=pkg):
+            success_list.append(pkg)
+            # 检查残留文件
+            print(f"▰ 正在验证 {pkg} 卸载结果...")
+            result = subprocess.run(pip_command + ['show', pkg], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if b"not found" in result.stderr:
+                print(f"✓ {pkg} 已完全移除")
+            else:
+                print(f"⚠️ 警告: {pkg} 可能仍有残留文件，请手动检查安装目录")
+        else:
+            fail_list.append(pkg)
+
+    # 显示汇总结果
+    print("\n▰▰▰ 卸载结果汇总 ▰▰▰")
+    if success_list:
+        print(f"✓ 成功卸载: {', '.join(success_list)}")
+    if fail_list:
+        print(f"✗ 卸载失败: {', '.join(fail_list)}")
 
 def list_all_packages(pip_command):
     try:
@@ -277,7 +375,53 @@ def show_package_details(pip_command, package):
     try:
         result = subprocess.run(pip_command + ['show', package], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
         print("\n包详细信息:")
-        print(result.stdout)
+        
+        # 汉化字段映射
+        field_translation = {
+            'Name': '包名称',
+            'Version': '版本',
+            'Summary': '简介',
+            'Home-page': '主页',
+            'Author': '作者',
+            'Author-email': '作者邮箱',
+            'License': '许可证',
+            'Location': '安装路径',
+            'Requires': '依赖项',
+            'Required-by': '被以下包依赖'
+        }
+
+        in_license = False
+        license_lines = []
+        
+        for line in result.stdout.splitlines():
+            # 处理许可证信息块
+            if line.startswith('Copyright') or in_license:
+                in_license = True
+                license_lines.append(line)
+                continue
+                
+            # 分割字段
+            if ':' in line:
+                key, value = line.split(':', 1)
+                key = key.strip()
+                value = value.strip()
+                
+                # 翻译字段名称
+                if key in field_translation:
+                    print(f"{field_translation[key]:<12}: {value}")
+                else:
+                    print(f"{key:<12}: {value}")
+            else:
+                print(line)
+
+        # 处理许可证信息
+        if license_lines:
+            print("\n▰ 许可证信息:")
+            print("(以下为简化摘要，完整内容请查看包目录)")
+            print("-" * 60)
+            print("\n".join(license_lines[:6]))  # 显示前6行关键信息
+            print("..."*10 + " [已截断完整许可证内容]")
+            
     except subprocess.CalledProcessError as e:
         print(f"\n获取包详细信息失败: {e.stderr.strip()}")
     except Exception as e:
@@ -381,6 +525,74 @@ def validate_package_name(package_name):
         print(f"验证包名时发生错误: {e}")
         return False
 
+def uninstall_all_non_standard(pip_command):
+    def is_standard_package(pkg_name):
+        # 更准确的判断方式
+        try:
+            __import__(pkg_name)
+            return True
+        except ImportError:
+            return False
+        except Exception:
+            return False
+
+    try:
+        # 获取所有用户安装的包
+        result = subprocess.run(
+            pip_command + ['list', '--format=freeze'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True
+        )
+        
+        # 解析包列表并过滤
+        all_packages = [line.split('==')[0] for line in result.stdout.splitlines()]
+        to_uninstall = [
+            pkg for pkg in all_packages 
+            if not is_standard_package(pkg) 
+            and not pkg.lower().startswith('pip')
+            and not pkg.lower().startswith('setuptools')
+            and not pkg.lower().startswith('wheel')
+        ]
+
+        if not to_uninstall:
+            print("\n没有可卸载的非官方库")
+            return
+
+        print("\n以下非官方库将被卸载:")
+        print("\n".join(f"- {pkg}" for pkg in to_uninstall))
+        print(f"\n总计: {len(to_uninstall)} 个库")
+
+        confirm = input("\n确定要卸载以上所有非官方库吗？(y/n): ").strip().lower()
+        if confirm != 'y':
+            print("取消操作")
+            return
+
+        # 分批卸载防止命令过长
+        batch_size = 10
+        total_batches = (len(to_uninstall) + batch_size - 1) // batch_size
+        for batch_num, i in enumerate(range(0, len(to_uninstall), batch_size), 1):
+            batch = to_uninstall[i:i+batch_size]
+            print(f"\n▰▰▰ 正在处理第 {batch_num}/{total_batches} 批 ▰▰▰")
+            print(f"本批包含 {len(batch)} 个库: {', '.join(batch)}")
+            
+            if run_pip_command(pip_command, ['uninstall', '-y'], batch, include_source=False):
+                print(f"✓ 成功卸载本批 {len(batch)} 个库")
+                print(f"进度: [{batch_num}/{total_batches}] {batch_num/total_batches:.0%}")
+            else:
+                print(f"✗ 本批 {len(batch)} 个库中有部分卸载失败")
+            
+            # 显示分隔线
+            print("-" * 60)
+
+        print("\n✅ 操作完成，建议重启Python环境使更改生效")
+
+    except subprocess.CalledProcessError as e:
+        print(f"获取包列表失败: {e.stderr.strip()}")
+    except Exception as e:
+        print(f"发生未知错误: {str(e)}")
+
 def main(pip_command):
     current_source = get_current_source()
     print(f"\n当前使用的pip源: {current_source}\n")
@@ -422,11 +634,12 @@ def main(pip_command):
         print("6. 列出所有库")
         print("7. 显示库详情")
         print("8. 获取公告")
-        print("9. 退出")
+        print("9. 卸载所有非官方库")
+        print("10. 退出")
         
-        choice = input("请输入选项 (1/2/3/4/5/6/7/8/9): ").strip()
+        choice = input("请输入选项 (1-10): ").strip()
         
-        if choice == "9":
+        if choice == "10":
             print("退出程序.")
             break
         
@@ -488,8 +701,17 @@ def main(pip_command):
         elif choice == "8":
             fetch_announcement()
         
+        elif choice == "9":
+            print("\n警告: 此操作将卸载所有非Python标准库!")
+            print("包括通过pip安装的所有第三方库")
+            confirm = input("确定要继续吗？(yes/no): ").strip().lower()
+            if confirm == 'yes':
+                uninstall_all_non_standard(pip_command)
+            else:
+                print("取消操作")
+        
         else:
-            print("无效的选择，请输入 1, 2, 3, 4, 5, 6, 7, 8 或 9.")
+            print("无效的选择，请输入 1, 2, 3, 4, 5, 6, 7, 8, 9, 10.")
         
         input("\n按回车键返回主菜单...")
 
