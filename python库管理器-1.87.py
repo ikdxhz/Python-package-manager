@@ -8,7 +8,7 @@ import threading
 import os
 
 print("作者: ikdxhz")
-print("程序版本: 1.87")
+print("程序版本: 1.87.2")
 
 pip_source = []
 
@@ -725,6 +725,3 @@ if __name__ == "__main__":
     
     pip_command = get_pip_command()
     main(pip_command)
-
-
-
