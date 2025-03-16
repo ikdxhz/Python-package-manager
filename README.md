@@ -4,4 +4,6 @@
 
 感谢您对 Python 库管理器的关注与支持！
 
+**下载链接**：[立即下载](https://wz.ikdxhz.top/pyxz)
+
 ikdxhz
