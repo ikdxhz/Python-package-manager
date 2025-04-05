@@ -4,6 +4,10 @@
 ![Python Version](https://img.shields.io/badge/python-3.6.1%2B-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-blue)
 
+##下载
+**链接**：https://wwaw.lanzoub.com/iiHlL2ssi5he
+**密码**:7wj0
+
 ## 简介
 
 Python库管理器是一个专为Windows 10及以上系统设计的Python包管理工具，旨在简化Python包的安装、更新、卸载和管理过程。它特别针对国内网络环境进行了优化，支持多种国内镜像源，以解决国内用户在使用PyPI官方源时可能遇到的网络问题。
