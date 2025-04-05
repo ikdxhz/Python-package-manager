@@ -4,9 +4,8 @@
 ![Python Version](https://img.shields.io/badge/python-3.6.1%2B-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-blue)
 
-##下载
-**链接**：https://wwaw.lanzoub.com/iiHlL2ssi5he
-**密码**:7wj0
+## 下载
+[下载链接](https://wwaw.lanzoub.com/iiHlL2ssi5he) | 提取码: **7wj0**
 
 ## 简介
 
