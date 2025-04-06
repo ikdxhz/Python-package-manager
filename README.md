@@ -5,7 +5,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-blue)
 
 ## 下载
-[下载链接](https://wwaw.lanzoub.com/iiHlL2ssi5he) | 提取码: **7wj0**
+[下载链接](https://wwaw.lanzoub.com/icHkn2std76b) | 提取码: **e6ny**
 
 ## 简介
 
@@ -240,6 +240,9 @@ A: 本工具专为Windows 10及以上系统设计，不支持Windows 7、8等旧
 ## License
 
 本项目采用 [MIT License](LICENSE) 许可证。您可以自由使用、修改和分发本项目，但需要保留版权声明。
+
+## 历史版本下载
+1.87.2.2：https://wwaw.lanzoub.com/iiHlL2ssi5he 密码:7wj0
 
 ---
 
